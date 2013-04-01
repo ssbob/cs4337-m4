@@ -1,0 +1,234 @@
+         An outline of the algorithm for the M4 processor
+         ------------------------------------------------
+
+         (C) Copyright Feliks Kluzniak, UTD, September 2011
+
+
+The following is an attempt to describe the internal structure of
+m4 in a way that would make it easier to understand its
+properties.  It is not tied to any version, nor is it informed by
+familiarity with the code of a real implementation of m4.
+
+
+Assumptions
+-----------
+
+1. We can make use of "streams", which can represent files or
+   strings.  There are two kinds of streams: input streams (of
+   type "input") and output streams (of type "output).
+
+   We can write to an output stream by appending a character to
+   its end.  There is never any need to look at the contents of an
+   active output stream.
+
+   An input stream is slightly more complicated:
+
+      - We can test whether the stream is empty.
+
+      - We can read the first character, which then disappears
+        from the stream: its successor (if any) becomes the new
+        first character.
+
+      - We can inspect the first character without reading it
+        (i.e., without changing the state of the stream).
+
+      - We can append arbitrary text to the beginning of the
+        stream.
+
+        [This is just an abstract way of looking at it: we can
+        implement the feature by instructing the reading mechanism
+        to take its input from somewhere else (e.g., a string),
+        and to revert to the real input stream after the string is
+        exhausted.  Such a mechanism must allow a number of
+        outstanding strings, i.e., we can append yet another
+        fragment of text to the beginning of the simulated stream
+        while some previously-appended text is still being read.]
+
+
+2. We can have "arrays of strings", with the following properties:
+
+      - a new array of strings is empty;
+
+      - we can always add a new entry (with a new index): there is
+        no limitation on the size of the array, apart from the
+        amount of available memory;
+
+      - there is no limitation on the size of an entry (i.e., one
+        string), apart from the amount of available memory;
+
+      - when we read a non-existent entry, we get an empty string.
+
+
+
+The general algorithm
+---------------------
+
+The macroprocessor can be thought of as a short set of mutually
+recursive procedures.  The arguments of the procedures are all
+passed by reference.
+
+NOTE: The pseudocode has not been tested.  Please notify the
+      author if you notice an error or an inconsistency.
+
+The procedures are as follows:
+
+
+1. m4:
+
+   This is the main program.  If we disregard processing of
+   command-line arguments etc., it consists of one procedure
+   invocation:
+
+        process( stdin, stdout )
+
+
+2. process( inp : input, out : output ):
+
+   // This procedure is the main workhorse.  It copies
+   // "inp" to "out" while expanding macros.
+
+   while  not end of "inp"  do
+
+      if the first character of "inp" is a backtick (`) then
+         // Copy a quoted string, without the (outermost)
+         // quotes. Note that quoted strings can be nested, e.g.,
+         // `a`bc'' is the quoted string "a`bc'", which contains a
+         // quoted substring "bc".  It is easy to recognize the
+         // right closing quote (ther second one in this case) if
+         // we keep track of the level of nesting.
+         //
+         read the backtick
+      ;  while not end of "inp" and the first character is not the
+               corresponding closing quote (')
+         do
+            read a character from "inp" and write it to "out"
+         od
+      ;  if not end of "inp" then
+            // the first character is the closing quote:
+            read a character from "inp"  // skip the closing quote
+         fi
+
+
+      elif the first character of "inp" begins an identifier then
+         read the identifier into a local string "id"
+      ;  if "id" is the name of a macro then
+            expand_macro( id, inp, out )
+         else
+            write "id" to "out"
+         fi
+
+      else
+         read the character from "inp" and write it to "out"
+   od
+
+
+3. expand_macro( id : string, inp : input, out : output ):
+
+     "args" is a local array of strings
+
+   ; if not end of "inp" and the first character of "inp" is '('
+     then
+        read a character from "inp"    // skip the left parenthesis
+     ;  get_arguments( inp, args )
+     ;  "new_body" is a local string: fill it with a copy of the body of
+         the macro "id", replacing every occurrence of "$i" (where
+         "i" is an integer > 0) with "args[ k ]"
+     ;  append "new_body" to the beginning of "inp"
+     fi
+
+
+
+4. get_arguments( inp : input, args : array of strings ):
+
+   // Note that the whitespace that precedes an argument is
+   // skipped, but whitespace that precedes an unquoted comma or
+   // an unquoted right parenthesis is considered to be a part of
+   // the preceding argument.
+
+    "k" is a local integer, initialized to 1
+   ; "tmp" is a local string, initially empty
+
+   ; while not end of "inp"
+           and the first character of "inp" is not ')'
+     do
+        skip_white
+     ;
+       // In practice the code below would have to maintain a
+       // counter for the nesting level of quoted strings.
+       //
+        while not end of "inp"
+              and
+              the first character of "inp" is neither an unquoted
+              ',' nor an unquoted ')'
+        do
+           read a character from "inp" and append it to the end
+           of "tmp"
+        od
+
+      ;  process( tmp, arg[ k ] )
+      ;  make "tmp" empty
+
+      ; if not end of "inp" and
+          the first character of "inp" is ','
+       then
+         read a character from "inp"    // skip the comma
+       ; increment "k"
+       fi
+     od
+
+
+5.  skip_white:
+
+    while not end of "inp"
+          and the first character of "inp" is a whitespace
+    do
+       read a character from "inp"
+    od
+
+
+
+
+Some predefined macros
+----------------------
+
+define( name, body ) :  "body" becomes the body of a new macro
+                        whose name is "name".  If there already
+                        exists a macro with this name, its
+                        definition disappears.
+
+dnl:                    Replace this and everything upto and
+                        including the nearest newline with an
+                        empty string.
+
+ifelse( a, b, c, d ) :  If "a" is identical to "b", then replace
+                        the entire macro call with "c"; otherwise
+                        replace it with "d".
+
+eval( exp ) :           If "exp" can be interpreted as an
+                        arithmetic expression, the call is
+                        replaced with the value of the
+                        expression.  This macro is quite forgiving
+                        of extra spaces.
+
+decr( n) :              "n" must be an integer.  Almost equivalent
+                        to eval( n - 1 ), but does not allow a
+                        space after "n".
+
+incr( n) :              "n" must be an integer.  Almost equivalent
+                        to eval( n + 1 ), but does not allow a
+                        space after "n".
+
+include( filename)   :  Replace with the contents of the named
+                        file.  Be wary of spaces before the ")"!
+                        The conventional extension for names with
+                        macro definitions is ".m4".
+
+traceon( name1, name2, ... ) :
+                        Details of the expansion of any of the
+                        named macros will be shown on stdout.
+                        Good for "debugging".  May require an
+                        additional flag on the command line:
+                           m4 -d
+
+
+-----------------------------------------------------------------

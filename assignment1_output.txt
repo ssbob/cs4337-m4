@@ -1,0 +1,36 @@
+seans-imac:~ ssbob98$ cat test.m4 
+dnl # Author: Sean Fay
+dnl # Date: 9/17/2011
+dnl # Language: GNU m4 version 1.4.6
+dnl #
+define(Fibonacci,`ifelse($1,0,`eval(0)',`ifelse($1,1,`eval(1)',`eval(Fibonacci(decr(decr($1))) + Fibonacci(decr($1)))')')')dnl
+dnl #
+dnl # Syntax: Fibonacci(n), where n = the Nth step in the Fibonacci Sequence
+dnl # Notes: This program does NOT check for values < 0, nor does it do any error checking 
+dnl # Notes: This program is a simple recursive (I think) example of the Fibonacci sequence using the m4 language
+dnl #
+seans-imac:~ ssbob98$ m4 --version
+GNU M4 1.4.6
+Copyright (C) 2006 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Written by Rene' Seindal.
+seans-imac:~ ssbob98$ m4 
+define(Fibonacci,`ifelse($1,0,`eval(0)',`ifelse($1,1,`eval(1)',`eval(Fibonacci(decr(decr($1))) + Fibonacci(decr($1)))')')')dnl
+Fibonacci(0)
+0
+Fibonacci(1)
+1
+Fibonacci(2)
+1
+Fibonacci(3)
+2
+Fibonacci(9)
+34
+Fibonacci(16)
+987
+Fibonacci(30)
+832040
+Fibonacci(-1)
+m4:stdin:9: ERROR: recursion limit of 1024 exceeded, use -L<N> to change it
